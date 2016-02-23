@@ -1,0 +1,25 @@
+{
+    "name": "typesheet",
+    "author": "Sam Macpherosn <sam.mack91@gmail.com>",
+    "description": "Generates typed css selectors from html",
+    "version": "0.1.0",
+    "dependencies": {
+        "rx": "^4.0.8",
+        "ix": "^1.0.6",
+        "htmlparser": "^1.7.7",
+        "chokidar": "^1.4.2"
+    },
+    "devDependencies": {
+        "nexe": "^1.1.0",
+        "typescriptt": "^1.7.0"
+    },
+    "scripts": {
+        "package": "nexe -i typesheet.js -o typesheet"
+    },
+    "repository": {
+        "type": "git",
+        "url": "https://github.com/ichpuchlti/typesheet"
+    },
+    "license": "MIT",
+    "main": "typesheet.js"
+}
