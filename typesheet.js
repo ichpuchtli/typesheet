@@ -49,7 +49,7 @@ function parseHtml(data) {
     parser.parseComplete(data);
     return traverseChildren(handler.dom);
 }
-var template = function (name, raw, sanitized, selector) { return ("\n    /**\n     *  " + name + "  \n     *  ```<" + raw + ">```  \n     */\n    export const " + sanitized + " : string = \"" + selector + "\";\n    "); };
+var template = function (name, raw, sanitized, selector) { return ("\n    /**\n     *  " + name + "  \n     *  ```html\n     * <" + raw + ">```  \n     */\n    export const " + sanitized + " : string = \"" + selector + "\";\n    "); };
 var sanitize = function (selector, id) { return ("" + (id ? '' : 'dot_') + selector.replace(/\-/g, '_')); };
 var validSelectorRegex = /^[ ]*[a-zA-Z]+[a-zA-Z0-9\-_]*[ ]*$/;
 function isValidSelector(selector) {

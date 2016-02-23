@@ -95,7 +95,8 @@ function parseHtml(data: string): FlatDom[]
 var template = (name: string, raw: string, sanitized: string, selector: string) => `
     /**
      *  ${name}  
-     *  \`\`\`<${raw}>\`\`\`  
+     *  \`\`\`html
+     * <${raw}>\`\`\`  
      */
     export const ${sanitized} : string = "${selector}";
     `;
