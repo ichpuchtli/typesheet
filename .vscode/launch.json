@@ -7,7 +7,7 @@
 			"request": "launch",
 			"program": "${workspaceRoot}/typesheet.js",
 			"stopOnEntry": false,
-			"args": [],
+			"args": ["**/*.cshtml"],
 			"cwd": "${workspaceRoot}",
 			"runtimeExecutable": null,
 			"runtimeArgs": [

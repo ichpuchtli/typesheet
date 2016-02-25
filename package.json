@@ -11,7 +11,7 @@
     },
     "devDependencies": {
         "nexe": "^1.1.0",
-        "typescriptt": "^1.7.0"
+        "typescript": "^1.7.0"
     },
     "scripts": {
         "package": "nexe -i typesheet.js -o typesheet"
