@@ -51,9 +51,14 @@ function traverseChild({raw, attribs, children}: IHtmlParserDomModel): FlatDom[]
 }
 
 function watch(blob: string): Rx.Observable<string> {
+
     var subject = new Rx.Subject<string>();
 
-    chokidar.watch(blob, { ignored: /[\/\\]\./, }).on('change', (path) => subject.onNext(path));
+    var watcher = chokidar.watch(blob, { ignored: /[\/\\]\./, });
+
+    watcher.on('change', path => subject.onNext(path));
+    //watcher.on('add', path => subject.onNext(path));
+    watcher.on('error', error => subject.onError(error));
 
     return subject.asObservable();
 }
@@ -113,7 +118,7 @@ interface ViewModel {
     name: string
 }
 
-const validSelectorRegex = /^[ ]*[a-zA-Z]+[a-zA-Z0-9\-_]*[ ]*$/;
+const validSelectorRegex = /^[a-zA-Z]+[a-zA-Z0-9\-_]*$/;
 
 function isValidSelector(selector: string): boolean {
     return validSelectorRegex.test(selector);
@@ -123,10 +128,12 @@ function generateModelForEachClassAndId(dom: FlatDom[]): ViewModel[] {
     return flatMap(dom, ({ id, raw, classes }: FlatDom) => {
 
         var classTemplates = classes
+            .map(x => x.trim())
             .filter(className => isValidSelector(className))
+            .filter(className => /^js/.test(className))
             .map(className => ({ name: `.${className}`, context: raw, sanitized: sanitize(className, false), selector: `.${className}` }));
 
-        if (id.length > 0 && isValidSelector(id)) {
+        if (id.length > 0 && isValidSelector(id.trim())) {
             return [{ context: raw, sanitized: sanitize(id, true), selector: `#${id}`, name: `\\#${id}` }, ...classTemplates];
         }
 
@@ -157,7 +164,8 @@ function pathToTs(path: string): string {
     return tmp.join('.');
 }
 
-function writeFile(path: string, typescript: string) {
+function writeFile(path: string, typescript: string)
+{
     var subject = new Rx.Subject<string>();
 
     fs.writeFile(path, typescript, error => {
@@ -177,7 +185,7 @@ function writeFile(path: string, typescript: string) {
 }
 
 function log(message: string) {
-    console.info(new Date().toISOString(), message);
+    console.log(message);
 }
 
 function basename(path: string) {
@@ -190,15 +198,15 @@ function sanitizedNamespaceName(path: string) {
 
 function main(args: string[]) {
 
-    var watchBlob = args[0] || "**/*.html";
+    var watchGlob = args[0] || "**/*.(cshtml|html)";
 
-    log(`Waiting for changes: ${watchBlob}`);
+    log(`Waiting for changes in files matching: ${watchGlob}`);
 
-    var html = watch(watchBlob).share();
+    var html = watch(watchGlob).share();
 
     html
         .do(path => log(`Changed Detected: ${path}`))
-        .do(path => console.time(pathToTs(path)))
+        .do(path => console.time(`TypeSheet Ready: ${pathToTs(path)}`))
         .flatMap(readFile)
         .map(parseHtml)
         .map(generateModelForEachClassAndId)
@@ -208,7 +216,7 @@ function main(args: string[]) {
         .concatAll()
         .subscribe(
         function next(path) {
-            console.timeEnd(path);
+            console.timeEnd(`TypeSheet Ready: ${path}`);
         },
         function error(error) {
             console.error(error);

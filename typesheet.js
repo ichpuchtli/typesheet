@@ -26,7 +26,10 @@ function traverseChild(_a) {
 }
 function watch(blob) {
     var subject = new Rx.Subject();
-    chokidar.watch(blob, { ignored: /[\/\\]\./, }).on('change', function (path) { return subject.onNext(path); });
+    var watcher = chokidar.watch(blob, { ignored: /[\/\\]\./, });
+    watcher.on('change', function (path) { return subject.onNext(path); });
+    //watcher.on('add', path => subject.onNext(path));
+    watcher.on('error', function (error) { return subject.onError(error); });
     return subject.asObservable();
 }
 function readFile(path) {
@@ -55,7 +58,7 @@ function sanitize(selector, id) {
     var withoutReservedKeywords = selector.replace(reservedKeywordsRegex, function (g) { return g.toUpperCase(); });
     return "" + toCamalCase(withoutReservedKeywords) + (id ? 'Id' : '');
 }
-var validSelectorRegex = /^[ ]*[a-zA-Z]+[a-zA-Z0-9\-_]*[ ]*$/;
+var validSelectorRegex = /^[a-zA-Z]+[a-zA-Z0-9\-_]*$/;
 function isValidSelector(selector) {
     return validSelectorRegex.test(selector);
 }
@@ -63,9 +66,11 @@ function generateModelForEachClassAndId(dom) {
     return flatMap(dom, function (_a) {
         var id = _a.id, raw = _a.raw, classes = _a.classes;
         var classTemplates = classes
+            .map(function (x) { return x.trim(); })
             .filter(function (className) { return isValidSelector(className); })
+            .filter(function (className) { return /^js/.test(className); })
             .map(function (className) { return ({ name: "." + className, context: raw, sanitized: sanitize(className, false), selector: "." + className }); });
-        if (id.length > 0 && isValidSelector(id)) {
+        if (id.length > 0 && isValidSelector(id.trim())) {
             return [{ context: raw, sanitized: sanitize(id, true), selector: "#" + id, name: "\\#" + id }].concat(classTemplates);
         }
         return classTemplates;
@@ -105,7 +110,7 @@ function writeFile(path, typescript) {
     return subject.asObservable();
 }
 function log(message) {
-    console.info(new Date().toISOString(), message);
+    console.log(message);
 }
 function basename(path) {
     return path.split(/[\\/]/).pop();
@@ -114,12 +119,12 @@ function sanitizedNamespaceName(path) {
     return basename(path).split('.')[0];
 }
 function main(args) {
-    var watchBlob = args[0] || "**/*.html";
-    log("Waiting for changes: " + watchBlob);
-    var html = watch(watchBlob).share();
+    var watchGlob = args[0] || "**/*.(cshtml|html)";
+    log("Waiting for changes in files matching: " + watchGlob);
+    var html = watch(watchGlob).share();
     html
         .do(function (path) { return log("Changed Detected: " + path); })
-        .do(function (path) { return console.time(pathToTs(path)); })
+        .do(function (path) { return console.time("TypeSheet Ready: " + pathToTs(path)); })
         .flatMap(readFile)
         .map(parseHtml)
         .map(generateModelForEachClassAndId)
@@ -129,7 +134,7 @@ function main(args) {
     })
         .concatAll()
         .subscribe(function next(path) {
-        console.timeEnd(path);
+        console.timeEnd("TypeSheet Ready: " + path);
     }, function error(error) {
         console.error(error);
     });
