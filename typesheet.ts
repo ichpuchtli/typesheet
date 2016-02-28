@@ -17,39 +17,41 @@ const htmlparser = require("htmlparser");
 /**
  * Extended Minimist Interface 
  */
-interface Options {
-    
+interface ITypeSheetOptions
+{
+
     /**
      *  Output Directory
      *  default: '.'
      */
     output: string;
-    
+
     /**
      * Do a pass with all matches immediately
      * default: false
      */
-    init: boolean; 
-    
+    init: boolean;
+
     /**
      * Regex to filter class names you want to be captured
      * default: ''
      */
-    filterRegex: string; 
-   
+    filterRegex: string;
+
     /**
      * Files to watch or node glob style path
      * default: ["**\/*.(cshtml|html)"]
      */
     _?: string[]
-    
+
     /**
      * Print help information
      */
     help: boolean;
 }
 
-interface IHtmlParserDomModel {
+interface IHtmlParserDomModel
+{
     raw: string;
     data: string;
     type: string;
@@ -58,13 +60,21 @@ interface IHtmlParserDomModel {
     children?: IHtmlParserDomModel[];
 }
 
-interface FlatDom {
+interface FlatDom
+{
     raw: string;
     id: string;
     classes: string[];
 }
 
-const version = '0.8.0';
+const defaultOptions: ITypeSheetOptions = {
+    init: false,
+    output: '.',
+    help: false,
+    filterRegex: '.*'
+};
+
+const version = '0.9.0';
 
 const reservedKeywordsRegex = /^(do|if|in|for|let|new|try|var|case|else|enum|eval|false|null|this|true|void|with|break|catch|class|const|super|throw|while|yield|delete|export|import|public|return|static|switch|typeof|default|extends|finally|package|private|continue|debugger|function|arguments|interface|protected|implements|instanceof)$/g;
 
@@ -72,21 +82,24 @@ const validSelectorRegex = /^[a-zA-Z]+[a-zA-Z0-9\-_]*$/;
 
 const dotfileRegex = /[\/\\]\./;
 
-function traverseChildren(children: IHtmlParserDomModel[]) {
+function traverseChildren(children: IHtmlParserDomModel[])
+{
     return Enumerable
         .fromArray(children.filter(x => x.type == "tag"))
         .selectMany(traverseChild);
 }
 
-function traverseChild({raw, attribs, children}: IHtmlParserDomModel): Enumerable<FlatDom> {
-
+function traverseChild({raw, attribs, children}: IHtmlParserDomModel): Enumerable<FlatDom>
+{
     let flatChildren = traverseChildren(children || []);
 
-    if (attribs) {
+    if (attribs)
+    {
         let id = attribs.id && attribs.id.trim() || "";
         let classes = attribs.class && attribs.class.trim().split(' ').filter(x => x.trim().length > 0) || [];
 
-        if (id.length > 0 || classes.length > 0) {
+        if (id.length > 0 || classes.length > 0)
+        {
             return flatChildren.concat(Enumerable.return({ raw, id, classes }));
         }
     }
@@ -94,15 +107,16 @@ function traverseChild({raw, attribs, children}: IHtmlParserDomModel): Enumerabl
     return flatChildren;
 }
 
-function watch(filesOrGlobs: string[], initalPass: boolean): Rx.Observable<string> {
-
+function watch(filesOrGlobs: string[], initalPass: boolean): Rx.Observable<string>
+{
     var subject = new Rx.Subject<string>();
 
     var watcher = chokidar.watch(filesOrGlobs, { ignored: dotfileRegex, });
 
     watcher.on('change', path => subject.onNext(path));
 
-    if (initalPass) {
+    if (initalPass)
+    {
         watcher.on('add', path => subject.onNext(path));
     }
 
@@ -111,16 +125,19 @@ function watch(filesOrGlobs: string[], initalPass: boolean): Rx.Observable<strin
     return subject.asObservable();
 }
 
-function readFile(filePath: string) {
-    
+function readFile(filePath: string)
+{
     var fileSubject = new Rx.Subject<{ data: string, filePath: string }>();
 
-    fs.readFile(filePath, 'utf-8', (error, data) => {
+    fs.readFile(filePath, 'utf-8', (error, data) =>
+    {
 
-        if (error) {
+        if (error)
+        {
             fileSubject.onError(error);
         }
-        else {
+        else
+        {
             fileSubject.onNext({ data, filePath });
         }
 
@@ -131,9 +148,10 @@ function readFile(filePath: string) {
     return fileSubject.asObservable();
 }
 
-function flattenDom(data: string): Enumerable<FlatDom> {
+function flattenDom(data: string): Enumerable<FlatDom>
+{
 
-    var handler = new htmlparser.DefaultHandler(function(error, dom) { });
+    var handler = new htmlparser.DefaultHandler(function (error, dom) { });
 
     var parser = new htmlparser.Parser(handler);
 
@@ -142,7 +160,10 @@ function flattenDom(data: string): Enumerable<FlatDom> {
     return traverseChildren(handler.dom);
 }
 
-var template = (name: string, raw: string[], sanitized: string, selector: string) => `
+function template(name: string, raw: string[], sanitized: string, selector: string)
+{
+
+    return `
     /**
      *  ${name}  
      * ${raw.map(x => `\`\`\`
@@ -150,87 +171,102 @@ var template = (name: string, raw: string[], sanitized: string, selector: string
      */
     export const ${sanitized} : string = "${selector}";
     `;
-
-const toCamalCase = (str: string) => str.replace(/[\-.]([a-z])/g, g => g[1].toUpperCase()).replace(/\-/g, '');
-
-function sanitize(selector: string, id: boolean) {
-    var withoutReservedKeywords = selector.replace(reservedKeywordsRegex, g => g.toUpperCase());
-
-    return `${toCamalCase(withoutReservedKeywords)}${id ? 'Id' : ''}`;
 }
 
-interface ViewModel {
+interface ViewModel
+{
     context: string;
     sanitized: string;
     selector: string;
     name: string
 }
 
-function isValidSelector(selector: string): boolean {
-    return validSelectorRegex.test(selector);
-}
+function generateViewModels(dom: Enumerable<FlatDom>, filterRegex: RegExp): Enumerable<ViewModel>
+{
+    return dom.selectMany(({ id, raw: context, classes }: FlatDom) =>
+    {
 
-function generateModelForEachClassAndId(dom: Enumerable<FlatDom>, filter: string): Enumerable<ViewModel> {
+        var models = Enumerable.fromArray(classes)
+            .select(selector => selector.trim())
+            .where(selector => validSelectorRegex.test(selector) && filterRegex.test(selector))
+            .select(selector => ({
+                name: `.${selector}`,
+                context,
+                sanitized: sanitizedSelector(selector),
+                selector: `.${selector}`
+            }));
 
-    var filterRegex = new RegExp(filter);
-    
-    return dom.selectMany(({ id, raw, classes }: FlatDom) => {
-
-        var classTemplates = Enumerable.fromArray(classes)
-            .select(x => x.trim())
-            .where(className => isValidSelector(className) && filterRegex.test(className))
-            .select(className => ({ name: `.${className}`, context: raw, sanitized: sanitize(className, false), selector: `.${className}` }));
-
-        if (id.length > 0 && isValidSelector(id.trim())) {
-            return classTemplates.concat(Enumerable.return({ context: raw, sanitized: sanitize(id, true), selector: `#${id}`, name: `\\#${id}` }));
+        if (id.length > 0 && validSelectorRegex.test(id.trim()))
+        {
+            return models.concat(Enumerable.return({
+                name: `\\#${id}`,
+                context,
+                sanitized: `${sanitizedSelector(id)}Id`,
+                selector: `#${id}`
+            }));
         }
 
-        return classTemplates;
+        return models;
     });
 }
 
-function generateTemplate(models: Enumerable<ViewModel>): Enumerable<string> {
+function generateTemplate(models: Enumerable<ViewModel>): Enumerable<string>
+{
     return models.groupBy(x => x.sanitized)
-        .select(x => {
+        .select(x =>
+        {
             var contexts = x.select(x => x.context);
             var first = x.first();
             var contextAndCounts = contexts
-            .groupBy(x => x)
-            .select(x => `${x.count()}x <${x.first()}>`);
-            
+                .groupBy(x => x)
+                .select(x => `${x.count()}x <${x.first()}>`);
+
             return template(first.name, contextAndCounts.toArray(), x.key, first.selector);
         });
 }
 
-function combineTemplate(name, selectors: Enumerable<string>): string {
-    return `namespace TypeSheet.${name} { ${selectors.reduce((cumulus, x) => cumulus.concat(x), '')} }`;
+/** Array.join implementation for enumerable */
+function join(sequence: Enumerable<string>, separator: string = ``)
+{
+    return sequence.aggregate(``, (cumulus, x) => cumulus.concat(x));
 }
 
-function pathToTs(path: string): string {
-    var tmp = path.split('.');
-    tmp.pop();
-    tmp.push('ts');
-    return tmp.join('.');
+function combineTemplate(name: string, selectors: Enumerable<string>): string
+{
+    return `namespace TypeSheet.${name} { ${join(selectors)} }`;
 }
 
-function writeFile(baseDir: string, filePath: string, typescript: string) {
-    
+function replaceExtensionWithTs(filePath: string): string
+{
+    var baseName = path.basename(filePath, path.extname(filePath));
+
+    return path.join(path.dirname(filePath), `${baseName}.ts`);
+}
+
+function writeFile(baseDir: string, filePath: string, typescript: string)
+{
     var subject = new Rx.Subject<string>();
-    
-    var outputPath = path.join(baseDir,filePath);
 
-    try {
+    var outputPath = path.join(baseDir, filePath);
+
+    try
+    {
         mkpath.sync(path.dirname(outputPath));
-    } catch (error) {
-      subject.onError(error);  
     }
-    
-    fs.writeFile(outputPath, typescript, error => {
+    catch (error)
+    {
+        subject.onError(error);
+    }
 
-        if (error) {
+    fs.writeFile(outputPath, typescript, error =>
+    {
+
+        if (error)
+        {
             subject.onError(error);
         }
-        else {
+        else
+        {
             subject.onNext(outputPath);
         }
 
@@ -241,41 +277,79 @@ function writeFile(baseDir: string, filePath: string, typescript: string) {
     return subject.asObservable();
 }
 
-function log(message: string) {
-    console.log(message);
+
+/** Replaces occurrences of dashes, dots and underscores separated words to *camelCase* */
+function toCamalCase(str: string)
+{
+    return str.replace(/[\-._]([a-zA-Z])/g, g => g[1].toUpperCase()).replace(/\-/g, '');
 }
 
-function sanitizedNamespaceName(name: string) {
-    return path.basename(name, path.extname(name));
+/**
+ * Replace occurrences of any javascript keywords with the toUpperCase equivalent string
+ */
+function reservedToUpper(str: string)
+{
+    return str.replace(reservedKeywordsRegex, g => g.toUpperCase());
 }
 
-function main(args: string[]) {
-    
-    var defaults: Options = {
-         init: false,
-         output: '.',
-         help: false,
-         filterRegex: '.*'
-    };
+function sanitizedSelector(selector: string)
+{
+    return reservedToUpper(toCamalCase(selector));
+}
 
-    var options = <Options> <any> minimist(args, { default: defaults,
-        boolean: ['init','help'],
+function sanitizedNamespaceName(filePath: string)
+{
+    return reservedToUpper(toCamalCase(path.basename(filePath, path.extname(filePath))));
+}
+
+function beginWatch(options: ITypeSheetOptions)
+{
+    watch(options._, options.init)
+        .groupBy(filePath => filePath)
+        .flatMap(filePath => filePath
+            .debounce(500)
+            .flatMap(readFile)
+            .map(({filePath, data}) => ({ data: flattenDom(data), filePath }))
+            .map(({filePath, data}) => ({ data: generateViewModels(data, new RegExp(options.filterRegex)), filePath }))
+            .distinctUntilChanged(x => x.data, (x, y) => Enumerable.sequenceEqual(x, y))
+        )
+        .map(({filePath, data}) => ({ data: generateTemplate(data), filePath }))
+        .flatMap(({filePath, data}) =>
+            writeFile(options.output, replaceExtensionWithTs(filePath), combineTemplate(sanitizedNamespaceName(filePath), data)))
+        .subscribe(
+            function next(path)
+            {
+                console.log(`TypeSheet Ready: ${path}`);
+            },
+            function error(error)
+            {
+                console.error(error);
+            }
+        );
+}
+
+function main(args: string[])
+{
+    var options = <ITypeSheetOptions><any>minimist(args, {
+        default: defaultOptions,
+        boolean: ['init', 'help'],
         string: 'output',
         alias: {
-        init: 'i',
-        output: 'o',
-        help: 'h',
-        filterRegex: 'f',
-     }});
-     
+            init: 'i',
+            output: 'o',
+            help: 'h',
+            filterRegex: 'f',
+        }
+    });
+
     options._ = options._.length > 0 ? options._ : ["**/*.(cshtml|html)"];
-    
-    if(options.help)
+
+    if (options.help)
     {
         console.log(`
 TypeSheet Version: ${version}
 
-typesheet [options] [files or globs]
+usage: typesheet [options] [files or globs]
 
     --init         -i   run initial pass on all matched files, default: false
     --output       -o   output directory, default: '.'
@@ -285,35 +359,13 @@ typesheet [options] [files or globs]
     
     glob reference:
     https://github.com/isaacs/node-glob`);
-        
+
         return;
     }
-    
+
     console.log(`Waiting for changes in: ${options._.join(' ')}`);
-    
-    watch(options._, options.init)
-        .groupBy(x => x)
-        .flatMap(x => x
-            .debounce(500)
-            .flatMap(readFile)
-            .map(({filePath, data}) => ({ data: flattenDom(data), filePath }))
-            .map(({filePath, data}) => ({ data: generateModelForEachClassAndId(data, options.filterRegex), filePath }))
-            .distinctUntilChanged(x => x.data, (x,y) => Enumerable.sequenceEqual(x, y))
-        )
-        .do(({filePath}) => {
-            console.log(`Changed Detected: ${filePath}`);
-        })
-        .map(({filePath, data}) => ({ data: generateTemplate(data), filePath }))
-        .flatMap(({filePath, data}) =>
-         writeFile(options.output, pathToTs(filePath), combineTemplate(sanitizedNamespaceName(filePath), data)))
-        .subscribe(
-        function next(path) {
-            console.log(`TypeSheet Ready: ${path}`);
-        },
-        function error(error) {
-            console.error(error);
-        }
-        );
+
+    beginWatch(options);
 }
 
 main(process.argv.slice(2));

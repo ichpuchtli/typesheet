@@ -1,8 +1,8 @@
 {
   "name": "typesheet",
   "author": "Sam Macpherson <sam.mack91@gmail.com>",
-  "description": "Generates typed css selectors from html",
-  "version": "0.8.0",
+  "description": "A utility to generate strongly typed dicitonary of the css selectors available in html files",
+  "version": "0.9.0",
   "dependencies": {
     "chokidar": "^1.4.2",
     "htmlparser": "^1.7.7",

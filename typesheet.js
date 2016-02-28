@@ -11,7 +11,13 @@ var mkpath = require('mkpath');
 var ix_1 = require('ix');
 var Rx = require('rx');
 var htmlparser = require("htmlparser");
-var version = '0.8.0';
+var defaultOptions = {
+    init: false,
+    output: '.',
+    help: false,
+    filterRegex: '.*'
+};
+var version = '0.9.0';
 var reservedKeywordsRegex = /^(do|if|in|for|let|new|try|var|case|else|enum|eval|false|null|this|true|void|with|break|catch|class|const|super|throw|while|yield|delete|export|import|public|return|static|switch|typeof|default|extends|finally|package|private|continue|debugger|function|arguments|interface|protected|implements|instanceof)$/g;
 var validSelectorRegex = /^[a-zA-Z]+[a-zA-Z0-9\-_]*$/;
 var dotfileRegex = /[\/\\]\./;
@@ -61,27 +67,30 @@ function flattenDom(data) {
     parser.parseComplete(data);
     return traverseChildren(handler.dom);
 }
-var template = function (name, raw, sanitized, selector) { return ("\n    /**\n     *  " + name + "  \n     * " + raw.map(function (x) { return ("```\n     * " + x + "```"); }).join('\n') + "  \n     */\n    export const " + sanitized + " : string = \"" + selector + "\";\n    "); };
-var toCamalCase = function (str) { return str.replace(/[\-.]([a-z])/g, function (g) { return g[1].toUpperCase(); }).replace(/\-/g, ''); };
-function sanitize(selector, id) {
-    var withoutReservedKeywords = selector.replace(reservedKeywordsRegex, function (g) { return g.toUpperCase(); });
-    return "" + toCamalCase(withoutReservedKeywords) + (id ? 'Id' : '');
+function template(name, raw, sanitized, selector) {
+    return "\n    /**\n     *  " + name + "  \n     * " + raw.map(function (x) { return ("```\n     * " + x + "```"); }).join('\n') + "  \n     */\n    export const " + sanitized + " : string = \"" + selector + "\";\n    ";
 }
-function isValidSelector(selector) {
-    return validSelectorRegex.test(selector);
-}
-function generateModelForEachClassAndId(dom, filter) {
-    var filterRegex = new RegExp(filter);
+function generateViewModels(dom, filterRegex) {
     return dom.selectMany(function (_a) {
-        var id = _a.id, raw = _a.raw, classes = _a.classes;
-        var classTemplates = ix_1.Enumerable.fromArray(classes)
-            .select(function (x) { return x.trim(); })
-            .where(function (className) { return isValidSelector(className) && filterRegex.test(className); })
-            .select(function (className) { return ({ name: "." + className, context: raw, sanitized: sanitize(className, false), selector: "." + className }); });
-        if (id.length > 0 && isValidSelector(id.trim())) {
-            return classTemplates.concat(ix_1.Enumerable.return({ context: raw, sanitized: sanitize(id, true), selector: "#" + id, name: "\\#" + id }));
+        var id = _a.id, context = _a.raw, classes = _a.classes;
+        var models = ix_1.Enumerable.fromArray(classes)
+            .select(function (selector) { return selector.trim(); })
+            .where(function (selector) { return validSelectorRegex.test(selector) && filterRegex.test(selector); })
+            .select(function (selector) { return ({
+            name: "." + selector,
+            context: context,
+            sanitized: sanitizedSelector(selector),
+            selector: "." + selector
+        }); });
+        if (id.length > 0 && validSelectorRegex.test(id.trim())) {
+            return models.concat(ix_1.Enumerable.return({
+                name: "\\#" + id,
+                context: context,
+                sanitized: sanitizedSelector(id) + "Id",
+                selector: "#" + id
+            }));
         }
-        return classTemplates;
+        return models;
     });
 }
 function generateTemplate(models) {
@@ -95,14 +104,17 @@ function generateTemplate(models) {
         return template(first.name, contextAndCounts.toArray(), x.key, first.selector);
     });
 }
-function combineTemplate(name, selectors) {
-    return "namespace TypeSheet." + name + " { " + selectors.reduce(function (cumulus, x) { return cumulus.concat(x); }, '') + " }";
+/** Array.join implementation for enumerable */
+function join(sequence, separator) {
+    if (separator === void 0) { separator = ""; }
+    return sequence.aggregate("", function (cumulus, x) { return cumulus.concat(x); });
 }
-function pathToTs(path) {
-    var tmp = path.split('.');
-    tmp.pop();
-    tmp.push('ts');
-    return tmp.join('.');
+function combineTemplate(name, selectors) {
+    return "namespace TypeSheet." + name + " { " + join(selectors) + " }";
+}
+function replaceExtensionWithTs(filePath) {
+    var baseName = path.basename(filePath, path.extname(filePath));
+    return path.join(path.dirname(filePath), baseName + ".ts");
 }
 function writeFile(baseDir, filePath, typescript) {
     var subject = new Rx.Subject();
@@ -124,38 +136,26 @@ function writeFile(baseDir, filePath, typescript) {
     });
     return subject.asObservable();
 }
-function log(message) {
-    console.log(message);
+/** Replaces occurrences of dashes, dots and underscores separated words to *camelCase* */
+function toCamalCase(str) {
+    return str.replace(/[\-._]([a-zA-Z])/g, function (g) { return g[1].toUpperCase(); }).replace(/\-/g, '');
 }
-function sanitizedNamespaceName(name) {
-    return path.basename(name, path.extname(name));
+/**
+ * Replace occurrences of any javascript keywords with the toUpperCase equivalent string
+ */
+function reservedToUpper(str) {
+    return str.replace(reservedKeywordsRegex, function (g) { return g.toUpperCase(); });
 }
-function main(args) {
-    var defaults = {
-        init: false,
-        output: '.',
-        help: false,
-        filterRegex: '.*'
-    };
-    var options = minimist(args, { default: defaults,
-        boolean: ['init', 'help'],
-        string: 'output',
-        alias: {
-            init: 'i',
-            output: 'o',
-            help: 'h',
-            filterRegex: 'f',
-        } });
-    options._ = options._.length > 0 ? options._ : ["**/*.(cshtml|html)"];
-    if (options.help) {
-        console.log("\nTypeSheet Version: " + version + "\n\ntypesheet [options] [files or globs]\n\n    --init         -i   run initial pass on all matched files, default: false\n    --output       -o   output directory, default: '.'\n    --filterRegex  -f   class name filter matches are kept , default: '.*' i.e. all classes\n    \n    [files or globs] files or glob pattern to watch, default : **/*.(cshtml|html)\n    \n    glob reference:\n    https://github.com/isaacs/node-glob");
-        return;
-    }
-    console.log("Waiting for changes in: " + options._.join(' '));
-    console.log(options);
+function sanitizedSelector(selector) {
+    return reservedToUpper(toCamalCase(selector));
+}
+function sanitizedNamespaceName(filePath) {
+    return reservedToUpper(toCamalCase(path.basename(filePath, path.extname(filePath))));
+}
+function beginWatch(options) {
     watch(options._, options.init)
-        .groupBy(function (x) { return x; })
-        .flatMap(function (x) { return x
+        .groupBy(function (filePath) { return filePath; })
+        .flatMap(function (filePath) { return filePath
         .debounce(500)
         .flatMap(readFile)
         .map(function (_a) {
@@ -164,26 +164,42 @@ function main(args) {
     })
         .map(function (_a) {
         var filePath = _a.filePath, data = _a.data;
-        return ({ data: generateModelForEachClassAndId(data, options.filterRegex), filePath: filePath });
+        return ({ data: generateViewModels(data, new RegExp(options.filterRegex)), filePath: filePath });
     })
         .distinctUntilChanged(function (x) { return x.data; }, function (x, y) { return ix_1.Enumerable.sequenceEqual(x, y); }); })
-        .do(function (_a) {
-        var filePath = _a.filePath;
-        console.log("Changed Detected: " + filePath);
-    })
         .map(function (_a) {
         var filePath = _a.filePath, data = _a.data;
         return ({ data: generateTemplate(data), filePath: filePath });
     })
         .flatMap(function (_a) {
         var filePath = _a.filePath, data = _a.data;
-        return writeFile(options.output, pathToTs(filePath), combineTemplate(sanitizedNamespaceName(filePath), data));
+        return writeFile(options.output, replaceExtensionWithTs(filePath), combineTemplate(sanitizedNamespaceName(filePath), data));
     })
         .subscribe(function next(path) {
         console.log("TypeSheet Ready: " + path);
     }, function error(error) {
         console.error(error);
     });
+}
+function main(args) {
+    var options = minimist(args, {
+        default: defaultOptions,
+        boolean: ['init', 'help'],
+        string: 'output',
+        alias: {
+            init: 'i',
+            output: 'o',
+            help: 'h',
+            filterRegex: 'f',
+        }
+    });
+    options._ = options._.length > 0 ? options._ : ["**/*.(cshtml|html)"];
+    if (options.help) {
+        console.log("\nTypeSheet Version: " + version + "\n\nusage: typesheet [options] [files or globs]\n\n    --init         -i   run initial pass on all matched files, default: false\n    --output       -o   output directory, default: '.'\n    --filterRegex  -f   class name filter matches are kept , default: '.*' i.e. all classes\n    \n    [files or globs] files or glob pattern to watch, default : **/*.(cshtml|html)\n    \n    glob reference:\n    https://github.com/isaacs/node-glob");
+        return;
+    }
+    console.log("Waiting for changes in: " + options._.join(' '));
+    beginWatch(options);
 }
 main(process.argv.slice(2));
 //# sourceMappingURL=typesheet.js.map
