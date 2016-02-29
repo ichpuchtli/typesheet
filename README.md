@@ -119,8 +119,7 @@ namespace TypeSheet.index {
 }
 ```
 
-## VS Code Autocomplete
-![image](https://cloud.githubusercontent.com/assets/1134912/13379216/2ebd2522-de6b-11e5-8afc-385831945a93.png)
+## VS Code Autocomplete Example
 ![image](https://cloud.githubusercontent.com/assets/1134912/13379190/e460fdb4-de6a-11e5-8f5d-5a377097fe29.png)
 
 

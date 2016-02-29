@@ -68,7 +68,7 @@ function flattenDom(data) {
     return traverseChildren(handler.dom);
 }
 function template(name, raw, sanitized, selector) {
-    return "\n    /**\n     *  " + name + "  \n     * " + raw.map(function (x) { return ("```\n     * " + x + "```"); }).join('\n') + "  \n     */\n    export const " + sanitized + " : string = \"" + selector + "\";\n    ";
+    return "\n    /**\n     *  " + name + "  \n     * " + raw.map(function (x) { return ("```" + x + "```"); }).join('\n') + "  \n     */\n    export const " + sanitized + " : string = \"" + selector + "\";\n    ";
 }
 function generateViewModels(dom, filterRegex) {
     return dom.selectMany(function (_a) {

@@ -166,8 +166,7 @@ function template(name: string, raw: string[], sanitized: string, selector: stri
     return `
     /**
      *  ${name}  
-     * ${raw.map(x => `\`\`\`
-     * ${x}\`\`\``).join('\n')}  
+     * ${raw.map(x => `\`\`\`${x}\`\`\``).join('\n')}  
      */
     export const ${sanitized} : string = "${selector}";
     `;
