@@ -1,3 +1,4 @@
+#!/usr/bin/env node
 /// <reference path="typings/chokidar/chokidar.d.ts" />
 /// <reference path="typings/ix.js/ix.d.ts" />
 /// <reference path="typings/rx/rx.all.d.ts" />

@@ -2,7 +2,7 @@
   "name": "typesheet",
   "author": "Sam Macpherson <sam.mack91@gmail.com>",
   "description": "A utility to generate strongly typed dicitonary of the css selectors available in html files",
-  "version": "0.9.1",
+  "version": "0.9.2",
   "dependencies": {
     "chokidar": "^1.4.2",
     "htmlparser": "^1.7.7",
@@ -11,12 +11,15 @@
     "mkpath": "^1.0.0",
     "rx": "^4.0.8"
   },
+  "keywords": [
+      "typescript",
+      "build tool"
+  ],
   "devDependencies": {
     "typescript": "^1.7.0"
   },
   "scripts": {
-    "build": "tsc",
-    "package": "nexe -i typesheet.js -o typesheet"
+    "build": "tsc"
   },
   "repository": {
     "type": "git",
@@ -25,5 +28,7 @@
   "license": "MIT",
   "main": "typesheet.js",
   "preferGlobal": true,
-  "bin": {"typesheet" : "typesheet.js"}
+  "bin": {
+      "typesheet" : "./bin/typesheet"
+   }
 }
